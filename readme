@@ -1,0 +1,79 @@
+# Chest X-Ray Pathology Detection
+
+A deep learning pipeline for multi-label pulmonary disease classification using the 
+NIH Chest X-Ray dataset. This project trains and compares three architectures — a 
+custom CNN, DenseNet-121 with transfer learning, and a Vision Transformer (ViT) — 
+then combines them into a soft voting ensemble. Monte Carlo Dropout is applied for 
+uncertainty quantification, and Grad-CAM visualizations are generated for model 
+interpretability.
+
+---
+
+## Project Overview
+
+- **Dataset:** NIH Chest X-Ray (112,120 images, 14 pathology classes)
+- **Task:** Multi-label image classification
+- **Models:** Custom CNN, DenseNet-121, Vision Transformer (ViT), Soft Voting Ensemble
+- **Uncertainty:** Monte Carlo Dropout
+- **Interpretability:** Grad-CAM heatmap visualizations
+- **Framework:** PyTorch
+
+---
+
+## Repository Structure
+```
+chest-xray-pathology-detection/
+├── data/
+│   └── preprocess.py          # Resizing, normalization, augmentation
+├── models/
+│   ├── custom_cnn.py          # Baseline CNN built from scratch
+│   ├── densenet121.py         # DenseNet-121 with transfer learning
+│   └── vit.py                 # Vision Transformer
+├── ensemble/
+│   └── soft_voting.py         # Combines model outputs via probability averaging
+├── uncertainty/
+│   └── mc_dropout.py          # Monte Carlo Dropout inference
+├── visualization/
+│   └── gradcam.py             # Grad-CAM heatmap generation
+├── train.py                   # Training loop
+├── evaluate.py                # AUC-ROC, F1, precision, recall
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## Models
+
+| Model | Description |
+|---|---|
+| Custom CNN | 3-4 layer CNN trained from scratch, serves as baseline |
+| DenseNet-121 | Pretrained on ImageNet, fine-tuned on NIH dataset |
+| ViT | Attention-based transformer applied to image patches |
+| Ensemble | Soft voting across all three model probability outputs |
+
+---
+
+## Evaluation Metrics
+
+- AUC-ROC per pathology class (primary metric, compared against CheXNet benchmark)
+- F1-Score
+- Precision and Recall
+- Uncertainty correlation analysis (MC Dropout variance vs. misclassification rate)
+
+---
+
+## References
+
+- Rajpurkar et al. (2017) - CheXNet: https://arxiv.org/pdf/1711.05225
+- Dosovitskiy et al. (2020) - Vision Transformer: https://arxiv.org/pdf/2010.11929
+- Gal & Ghahramani (2016) - Monte Carlo Dropout: https://proceedings.mlr.press/v48/gal16.html
+- NIH Chest X-Ray Dataset: https://www.kaggle.com/datasets/nih-chest-xrays/data
+
+---
+
+## Team
+
+Name 1, Name 2, Name 3, Name 4  
+COSC 4368 - Fundamentals of Artificial Intelligence  
+University of Houston
