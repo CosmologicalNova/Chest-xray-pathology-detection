@@ -1,0 +1,174 @@
+================================================================
+PROJECT SCAFFOLD
+================================================================
+
+Chest-xray-pathology-detection/
+│
+├── configs/
+│   └── config.yaml
+│       — All hyperparameters in one place
+│       — data fraction, batch size, learning rate, epochs,
+│         dropout rates, freeze epochs, MC dropout passes,
+│         ensemble weights, file paths
+│
+├── data/
+│   ├── images/                     — 112,120 PNG chest X-rays
+│   └── Data_Entry_2017.csv         — NIH labels and metadata
+│
+├── scripts/
+│   ├── setup_data.py               — run once to download and organize dataset
+│   └── learning_curve.py           — run after multiple training fractions
+│                                     to plot AUC vs data size
+│
+├── src/
+│   │
+│   ├── data/
+│   │   └── dataset.py
+│   │       — CLASSES list (14 pathology labels)
+│   │       — get_transforms()
+│   │           returns augmentation pipeline per split
+│   │           train: flip, rotation, color jitter, normalize
+│   │           val/test: resize, normalize only
+│   │       — ChestXrayDataset (PyTorch Dataset)
+│   │           reads image from disk, applies transform
+│   │           returns (image_tensor, label_vector) per sample
+│   │       — prepare_dataframes()
+│   │           reads CSV, one-hot encodes 14 classes
+│   │           builds stratify_key from all 14 classes combined
+│   │           safe_stratify() falls back to single class if needed
+│   │           splits into train 70 / val 15 / test 15
+│   │       — get_dataloaders()
+│   │           returns train, val, test DataLoader objects
+│   │
+│   ├── models/
+│   │   ├── custom_cnn.py
+│   │   │   — ConvBlock
+│   │   │       Conv2d → BatchNorm → ReLU → MaxPool
+│   │   │   — CustomCNN
+│   │   │       4 ConvBlocks → GAP → Dropout → FC → FC → logits
+│   │   │       enable_mc_dropout() keeps dropout ON at inference
+│   │   │
+│   │   ├── densenet.py
+│   │   │   — DenseNet121
+│   │   │       loads ImageNet pretrained DenseNet-121 backbone
+│   │   │       replaces classifier with 14-output sigmoid head
+│   │   │       freeze_backbone() / unfreeze_backbone()
+│   │   │       enable_mc_dropout()
+│   │   │
+│   │   └── vit.py
+│   │       — ViTClassifier
+│   │           loads pretrained ViT via timm
+│   │           attaches LayerNorm → Dropout → Linear(14) head
+│   │           freeze_backbone() / unfreeze_backbone()
+│   │           enable_mc_dropout()
+│   │
+│   ├── training/
+│   │   └── trainer.py
+│   │       — Trainer class
+│   │           __init__()
+│   │               sets up BCEWithLogitsLoss, AdamW optimizer,
+│   │               CosineAnnealingLR scheduler, log CSV file
+│   │           _train_epoch()
+│   │               one full pass through train loader
+│   │               gradient clipping at max_norm=1.0
+│   │           _val_epoch()
+│   │               one full pass through val loader
+│   │               computes mean AUC-ROC across 14 classes
+│   │           train()
+│   │               runs all epochs, handles freeze/unfreeze,
+│   │               early stopping, checkpointing best val AUC,
+│   │               logs epoch metrics to CSV
+│   │
+│   ├── evaluation/
+│   │   ├── metrics.py
+│   │   │   — CLASSES list
+│   │   │   — evaluate_model()
+│   │   │       runs model on dataloader
+│   │   │       returns AUC, F1, precision, recall per class
+│   │   │   — mc_dropout_uncertainty()
+│   │   │       enables dropout at inference
+│   │   │       runs N forward passes on same input
+│   │   │       returns mean probabilities and variance per prediction
+│   │   │   — print_results_table()
+│   │   │       prints formatted per-class metrics to terminal
+│   │   │
+│   │   └── visualize.py
+│   │       — plot_training_curves()
+│   │           reads log CSV, plots train loss, val loss, val AUC
+│   │       — plot_roc_curves()
+│   │           plots per-class ROC curves in 4x4 grid
+│   │       — plot_confusion_matrices()
+│   │           plots TP/FP/TN/FN per class in 4x4 grid
+│   │       — plot_uncertainty_vs_error()
+│   │           scatter plot of MC Dropout variance vs correctness
+│   │           validates whether uncertainty correlates with errors
+│   │       — plot_ablation_table()
+│   │           bar chart comparing all 4 models on AUC, F1,
+│   │           precision, recall side by side
+│   │       — GradCAM class
+│   │           hooks into target conv layer
+│   │           captures forward activations and backward gradients
+│   │           generate() produces heatmap for a specific class
+│   │       — plot_gradcam()
+│   │           saves original image, raw heatmap, and overlay
+│   │
+│   └── ensemble/
+│       └── soft_voting.py
+│           — get_model_probs()
+│               runs one model on dataloader, returns (N, 14) probs
+│           — soft_voting_ensemble()
+│               weighted average across list of probability arrays
+│           — run_ensemble()
+│               runs all models, calls soft_voting_ensemble,
+│               returns final (N, 14) ensemble probabilities
+│
+├── checkpoints/                    — saved by trainer.py during training
+│   ├── custom_cnn_best.pth         — best val AUC weights
+│   ├── densenet_best.pth
+│   ├── vit_best.pth
+│   └── test_loader.pt              — saved test split for consistent eval
+│
+├── logs/                           — saved by trainer.py during training
+│   ├── custom_cnn_log.csv          — epoch, train_loss, val_loss, val_auc, lr
+│   ├── densenet_log.csv
+│   └── vit_log.csv
+│
+├── results/                        — saved by evaluate.py
+│   ├── custom_cnn_training_curves.png
+│   ├── custom_cnn_roc_curves.png
+│   ├── custom_cnn_confusion_matrices.png
+│   ├── custom_cnn_uncertainty_plot.png
+│   ├── custom_cnn_sample0_gradcam_*.png
+│   ├── densenet_training_curves.png
+│   ├── densenet_roc_curves.png
+│   ├── densenet_confusion_matrices.png
+│   ├── densenet_uncertainty_plot.png
+│   ├── densenet_sample0_gradcam_*.png
+│   ├── vit_training_curves.png
+│   ├── vit_roc_curves.png
+│   ├── vit_confusion_matrices.png
+│   ├── vit_uncertainty_plot.png
+│   ├── ensemble_roc_curves.png
+│   ├── ensemble_confusion_matrices.png
+│   ├── ablation_comparison.png
+│   ├── metrics_summary.csv
+│   └── learning_curve.png          — generated by scripts/learning_curve.py
+│
+├── .env                            — KAGGLE_API_TOKEN (never pushed to GitHub)
+├── .gitignore                      — blocks data/, checkpoints/, logs/,
+│                                     results/, .env from being pushed
+├── train.py
+│   — loads config, builds dataloaders, computes pos_weights,
+│     trains CustomCNN then DenseNet then ViT sequentially,
+│     saves test_loader.pt for evaluate.py
+│
+├── evaluate.py
+│   — loads checkpoints, plots training curves,
+│     evaluates each model (AUC/F1/precision/recall),
+│     runs MC Dropout uncertainty per model,
+│     runs Grad-CAM per CNN model,
+│     runs soft voting ensemble,
+│     saves ablation chart and metrics_summary.csv
+│
+├── requirements.txt
+├── README.md

@@ -1,0 +1,230 @@
+Model Architecture
+================================================================
+MODEL ARCHITECTURE DOCUMENTATION
+================================================================
+
+================================================================
+SHARED ACROSS ALL MODELS
+================================================================
+
+Dataset         : NIH Chest X-Ray14 (112,120 PNG images, 14 pathology classes)
+Task            : Multi-label classification (one probability per class per image)
+Split           : Train 70% / Val 15% / Test 15%
+                  Stratified by all 14 class combinations combined into one key
+                  Falls back to single-class stratify if any combo appears < 2 times
+Fraction used   : Configurable via config.yaml data_fraction
+
+Preprocessing:
+  - Resize to 224x224 (required by DenseNet and ViT pretrained input size)
+  - Normalize with ImageNet mean=[0.485,0.456,0.406] std=[0.229,0.224,0.225]
+    Reason: DenseNet and ViT pretrained on ImageNet — must match their expected input
+    Note: Custom CNN training from scratch could use NIH-specific stats instead
+  - Convert grayscale X-rays to RGB (3-channel) 
+    Reason: pretrained models expect 3 channels
+
+Augmentation (train only, not val/test):
+  - RandomHorizontalFlip
+  - RandomRotation ±10 degrees
+  - ColorJitter brightness=0.2, contrast=0.2
+  Reason: reduces overfitting, increases effective dataset size
+  Note: horizontal flip may not be clinically valid (flipping heart position)
+        remove if domain knowledge says so
+
+Class imbalance handling:
+  - pos_weight per class = (# negatives) / (# positives)
+    Penalizes missing a rare positive proportionally to its rarity
+    Applied inside BCEWithLogitsLoss
+
+Loss function : BCEWithLogitsLoss (sigmoid + binary cross entropy fused)
+  Reason: numerically more stable than manual sigmoid then BCE
+  Applies independently to each of the 14 classes (multi-label)
+
+Optimizer     : AdamW, weight_decay=0.0001
+  Reason: AdamW decouples weight decay from gradient scaling unlike Adam
+  Standard choice for transformers and modern CNNs
+
+LR Scheduler  : CosineAnnealingLR, T_max=epochs, eta_min=1e-6
+  Reason: smoothly decays LR to let model settle into better minima
+  Note: constant LR causes loss to bounce near convergence
+
+Gradient clipping : max_norm=1.0
+  Reason: prevents exploding gradients especially in ViT
+  Note: if loss suddenly goes NaN this is likely the cause
+
+Early stopping : patience=7 epochs on val AUC
+  Reason: stops training when model stops improving, prevents overfitting
+
+Checkpointing  : saves best val AUC weights to checkpoints/*.pth
+
+
+================================================================
+MODEL 1 — CUSTOM CNN (Baseline)
+================================================================
+
+Type            : Built from scratch, no pretrained weights
+Purpose         : Performance floor — everything else should beat this
+
+Architecture:
+  Input         : (batch, 3, 224, 224)
+  Conv Block 1  : Conv2d(3→32, 3x3) → BatchNorm → ReLU → MaxPool(2x2)
+  Conv Block 2  : Conv2d(32→64, 3x3) → BatchNorm → ReLU → MaxPool(2x2)
+  Conv Block 3  : Conv2d(64→128, 3x3) → BatchNorm → ReLU → MaxPool(2x2)
+  Conv Block 4  : Conv2d(128→256, 3x3) → BatchNorm → ReLU → MaxPool(2x2)
+  GAP           : AdaptiveAvgPool2d(1) → (batch, 256)
+  FC            : Linear(256→128) → ReLU → Dropout(0.5)
+  Output        : Linear(128→14) raw logits
+
+Spatial reduction : 224 → 112 → 56 → 28 → 14 → 1 (via MaxPool + GAP)
+Channel growth    : 3 → 32 → 64 → 128 → 256
+  Reason: doubling channels per block is standard — more feature detectors
+          at deeper layers where features are more abstract
+
+BatchNorm after each Conv:
+  Reason: stabilizes training, reduces sensitivity to weight initialization
+  Note: removing it will likely cause unstable loss curves
+
+Global Average Pooling instead of Flatten:
+  Reason: avoids large FC parameter count, acts as regularizer
+  Note: Flatten of 14x14x256 = 50,176 inputs to FC vs GAP = 256 inputs
+
+Dropout rate    : 0.5
+  If train AUC >> val AUC (overfitting)  → increase dropout
+  If both AUC low and equal (underfitting) → decrease dropout or add more blocks
+
+Learning rate   : 0.0001 (shared global — could use 0.001 for from-scratch models)
+Freeze epochs   : 0 (nothing to freeze, no pretrained weights)
+
+MC Dropout passes : 50
+  Keeps dropout ON at inference, runs 50 forward passes
+  Variance across passes = uncertainty score per prediction
+
+
+================================================================
+MODEL 2 — DENSENET-121 (Transfer Learning / CheXNet approach)
+================================================================
+
+Type            : Pretrained on ImageNet, fine-tuned on NIH
+Purpose         : Replicate CheXNet benchmark, leverage pretrained CNN features
+
+Why DenseNet:
+  Dense connections — every layer receives feature maps from ALL previous layers
+  Benefit: stronger gradient flow, feature reuse, fewer parameters than ResNet
+  Note: DenseNet169/201 have more capacity but need more VRAM
+
+Architecture:
+  Backbone      : DenseNet-121 pretrained on ImageNet (torchvision)
+                  121 layers, dense block connections
+                  Outputs 1024 feature maps before pooling
+  GAP           : AdaptiveAvgPool2d(1) → (batch, 1024)
+  Dropout       : 0.5
+  Output        : Linear(1024→14) raw logits
+
+Fine-tuning strategy:
+  Phase 1 (freeze_epochs=5) : freeze backbone, train classifier head only
+    Reason: protects pretrained weights while head stabilizes
+    Note: skipping this may destroy ImageNet features in early epochs
+  Phase 2 (after epoch 5)   : unfreeze all layers, LR reduced to 0.1x
+    Reason: gentle full fine-tuning adapts ImageNet features to X-rays
+
+Dropout rate    : 0.5
+Learning rate   : 0.0001 (important — higher LR risks overwriting pretrained weights)
+MC Dropout passes : 50
+
+
+================================================================
+MODEL 3 — VISION TRANSFORMER (ViT)
+================================================================
+
+Type            : Pretrained on ImageNet-21k + ImageNet-1k, fine-tuned on NIH
+Purpose         : Attention-based alternative to CNN, captures global patterns
+
+Why ViT vs CNN:
+  CNN: strong on LOCAL features (nodules, edges, small textures)
+       uses sliding filters — distant regions interact only through many layers
+  ViT: splits image into 196 patches (16x16px each for 224px input)
+       self-attention lets every patch directly attend to every other patch
+       strong on GLOBAL patterns (Cardiomegaly, Effusion, structural changes)
+  Note: neither is universally better — ensemble combines both strengths
+
+Architecture:
+  Input         : (batch, 3, 224, 224)
+  Patch embed   : splits into 196 patches of 16x16px each
+  [CLS] token   : prepended learnable token, aggregates global image info
+                  analogous to BERT [CLS] in NLP
+  Transformer   : 12 attention layers, embed_dim=768
+  Output        : [CLS] token embedding (batch, 768)
+  LayerNorm     : applied before classifier (ViT uses LayerNorm not BatchNorm)
+  Dropout       : 0.1 (ViT uses lower dropout than CNN)
+  Output        : Linear(768→14) raw logits
+
+Model variant   : vit_base_patch16_224 (via timm library)
+  vit_small_patch16_224 → faster, less VRAM, less capacity
+  vit_large_patch16_224 → more capacity, may OOM on 8GB VRAM
+  vit_base_patch32_224  → fewer tokens (49 vs 196), faster but less detail
+
+Fine-tuning strategy: same as DenseNet (freeze then unfreeze)
+Learning rate   : 0.0001 (ViT is sensitive to LR — keep low)
+MC Dropout passes : 50
+
+
+================================================================
+MODEL 4 — SOFT VOTING ENSEMBLE
+================================================================
+
+Type            : No training — combines outputs of models 1, 2, 3
+Purpose         : Outperform any individual model by combining complementary strengths
+
+Method          : Weighted soft voting
+  Each model outputs 14 probabilities (after sigmoid)
+  Ensemble = weighted average of all three probability vectors
+  Current weights: [0.2, 0.4, 0.4] for [CustomCNN, DenseNet, ViT]
+    Reason: DenseNet and ViT get higher weight as stronger models
+    Note: tune weights proportional to each model's val AUC for better results
+          equal weights [0.33, 0.33, 0.33] is also a valid starting point
+
+Why soft over hard voting:
+  Hard voting: each model votes yes/no, majority wins
+               ignores confidence — a 0.48 and 0.05 prediction both count as "no"
+  Soft voting: averages raw probabilities, preserves confidence information
+               generally outperforms hard voting
+
+Final prediction: probability >= 0.5 → positive for that class
+  Note: threshold can be tuned per class
+        lower threshold → higher recall (catches more true positives)
+        higher threshold → higher precision (fewer false positives)
+        in medical AI recall is usually prioritized over precision
+
+
+================================================================
+REGULARIZATION SUMMARY
+================================================================
+
+Technique             | Where applied        | Purpose
+----------------------|----------------------|---------------------------
+Dropout(0.5)          | CNN, DenseNet FC     | Prevents overfitting
+Dropout(0.1)          | ViT                  | Prevents overfitting
+Weight decay(0.0001)  | All via AdamW        | L2 regularization
+BatchNorm             | CNN conv blocks      | Training stability
+Data augmentation     | Train loader         | Increases effective data size
+Early stopping        | All models           | Stops before overfitting
+Gradient clipping     | All models           | Prevents exploding gradients
+Backbone freezing     | DenseNet, ViT        | Protects pretrained weights
+
+
+================================================================
+METRICS USED
+================================================================
+
+Primary   : AUC-ROC per class
+  Reason: handles class imbalance, standard NIH benchmark metric
+  Compare against CheXNet published AUC values per class
+
+Secondary : F1, Precision, Recall per class
+  F1        : balance between precision and recall
+  Precision : of predicted positives, how many are real
+  Recall    : of real positives, how many were caught
+  In medical AI: recall is usually more important (missing disease = dangerous)
+
+Uncertainty : MC Dropout variance per prediction
+  High variance = model is uncertain = flag for clinical review
+  Valid if high uncertainty correlates with wrong predictions

@@ -1,0 +1,35 @@
+# Credentials — never push these
+.env
+
+# Dataset — 45GB, never push
+data/
+
+# Model weights
+checkpoints/
+
+# Training outputs
+logs/
+results/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# VSCode
+.vscode/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+Documentations.txt
