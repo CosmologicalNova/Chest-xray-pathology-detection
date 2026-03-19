@@ -7,10 +7,10 @@ data:
   csv_path: "data/Data_Entry_2017.csv"
   images_dir: "data/images"
   image_size: 224                  # ViT and DenseNet both expect 224x224
-  batch_size: 32                   # Lower to 16 if you get CUDA out of memory
-  num_workers: 4                   # Parallel data loading workers
-  data_fraction: 0.1             # Start at 0.25 (25% of data) for fast iteration
-                                   # Scale to 1.0 once models are tuned and working
+  batch_size: 16                   # Lower to 16 if you get CUDA out of memory
+  num_workers: 4                   # Parallel data loading workers (4 is good for M4)
+  data_fraction: 1.0               # Using sample dataset (5,606 images) — use all of it
+                                   # If using full dataset (112k images), start at 0.25
   train_split: 0.70
   val_split:   0.15                # Validation set for hyperparameter tuning
   test_split:  0.15                # Final held-out test set, touch only at the end
@@ -45,22 +45,22 @@ training:
 custom_cnn:
   learning_rate: 0.001
   dropout_rate: 0.5                # Dropout between FC layers — increase if overfitting
-  mc_dropout_passes: 50            # Number of forward passes for uncertainty estimation
+  mc_dropout_passes: 10            # Number of forward passes for uncertainty estimation
 
 densenet:
   learning_rate: 0.0001
-  freeze_epochs: 5                 # Freeze pretrained layers for first N epochs
+  freeze_epochs: 1                 # Freeze pretrained layers for first N epochs
                                    # Then unfreeze for full fine-tuning
                                    # Increase if model diverges early in training
   dropout_rate: 0.5
-  mc_dropout_passes: 50
+  mc_dropout_passes: 10
 
 vit:
   learning_rate: 0.0001
   model_name: "vit_base_patch16_224"  # Patch size 16 = 14x14 grid of patches per image
                                        # Try "vit_small_patch16_224" if memory is tight
   dropout_rate: 0.1                    # ViT uses lower dropout than CNNs typically
-  mc_dropout_passes: 50
+  mc_dropout_passes: 10
 
 ensemble:
   weights: [0.2, 0.4, 0.4]        # Weighted soft voting: [custom_cnn, densenet, vit]

@@ -6,6 +6,7 @@ data/
 
 # Model weights
 checkpoints/
+checkpoints_*/
 
 # Training outputs
 logs/

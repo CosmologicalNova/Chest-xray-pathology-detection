@@ -88,7 +88,12 @@ def main():
     with open("configs/config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
     num_classes = config["labels"]["num_classes"]
     results_dir = config["paths"]["results"]
     logs_dir    = config["paths"]["logs"]

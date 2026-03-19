@@ -14,7 +14,7 @@ os.environ["KAGGLE_API_TOKEN"] = os.getenv("KAGGLE_API_TOKEN", "")
 
 OUTPUT_IMAGES_DIR = "data/images"
 OUTPUT_CSV_PATH   = "data/Data_Entry_2017.csv"
-EXPECTED_IMAGES   = 112120
+EXPECTED_IMAGES   = 5606   # sample dataset has 5,606 images (full dataset has 112,120)
 
 
 def main():
@@ -28,10 +28,10 @@ def main():
         os.system("pip install kagglehub")
         import kagglehub
 
-    print("Downloading NIH Chest X-Ray dataset via kagglehub...")
-    print("45GB on first run — returns cached path instantly if already downloaded.\n")
+    print("Downloading NIH Chest X-Ray SAMPLE dataset via kagglehub...")
+    print("~1.2GB download — much smaller than the full 45GB dataset.\n")
 
-    download_path = kagglehub.dataset_download("nih-chest-xrays/data")
+    download_path = kagglehub.dataset_download("nih-chest-xrays/sample")
     print(f"Dataset located at: {download_path}")
 
     os.makedirs(OUTPUT_IMAGES_DIR, exist_ok=True)
@@ -56,8 +56,10 @@ def main():
                 print(f"  {i:,} / {len(all_pngs):,} copied...")
         print("  Done.")
 
-    csv_candidates = glob.glob(
-        os.path.join(download_path, "**", "Data_Entry_2017.csv"), recursive=True
+    # sample dataset uses "sample_labels.csv"; full dataset uses "Data_Entry_2017.csv"
+    csv_candidates = (
+        glob.glob(os.path.join(download_path, "**", "sample_labels.csv"), recursive=True) or
+        glob.glob(os.path.join(download_path, "**", "Data_Entry_2017.csv"), recursive=True)
     )
     if csv_candidates and not os.path.exists(OUTPUT_CSV_PATH):
         shutil.copy2(csv_candidates[0], OUTPUT_CSV_PATH)
@@ -65,7 +67,7 @@ def main():
     elif os.path.exists(OUTPUT_CSV_PATH):
         print(f"CSV already at {OUTPUT_CSV_PATH}")
     else:
-        print("WARNING: Data_Entry_2017.csv not found — copy it manually to data/")
+        print("WARNING: CSV not found — copy sample_labels.csv manually to data/Data_Entry_2017.csv")
 
     print("\n" + "="*50)
     actual = len(glob.glob(os.path.join(OUTPUT_IMAGES_DIR, "*.png")))
@@ -74,7 +76,7 @@ def main():
     print(f"CSV    : {'Found' if csv_ok else 'MISSING'}")
 
     if actual >= EXPECTED_IMAGES and csv_ok:
-        print("\nData ready. Set data_fraction: 0.02 and epochs: 2 in config.yaml then run train.py")
+        print("\nData ready. Set data_fraction: 1.0 in config.yaml (sample is already small) then run train.py")
     else:
         print(f"\nExpected {EXPECTED_IMAGES:,} images — download may not have completed.")
 
