@@ -35,7 +35,7 @@ labels:
   num_classes: 14
 
 training:
-  epochs: 2                       # Start with 30, increase if val loss is still dropping
+  epochs: 20                      # Start with 30, increase if val loss is still dropping
   learning_rate: 0.0001            # 1e-4 is standard starting point for transfer learning
                                    # Lower to 1e-5 if val loss is unstable
   weight_decay: 0.0001             # L2 regularization — increase if overfitting
@@ -63,7 +63,7 @@ vit:
   mc_dropout_passes: 10
 
 ensemble:
-  weights: [0.2, 0.4, 0.4]        # Weighted soft voting: [custom_cnn, densenet, vit]
+  weights: [0.33, 0.33, 0.33]        # Weighted soft voting: [custom_cnn, densenet, vit]
                                    # DenseNet and ViT get higher weight since they're stronger
                                    # Change to [0.33, 0.33, 0.33] for equal weighting
 
