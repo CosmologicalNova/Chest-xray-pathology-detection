@@ -132,16 +132,17 @@ class Trainer:
         with torch.no_grad():
             for images, labels in self.val_loader:
                 images = images.to(self.device, non_blocking=True)
-                labels = labels.to(self.device, non_blocking=True)
+                labels_cpu = labels                              # Keep original CPU copy for AUC
+                labels_dev = labels.to(self.device)             # Device copy for loss only (no non_blocking — avoids MPS race condition)
 
                 logits = self.model(images)
-                loss = self.criterion(logits, labels)
+                loss = self.criterion(logits, labels_dev)
                 total_loss += loss.item()
 
                 # Convert logits to probabilities for AUC calculation
                 probs = torch.sigmoid(logits)
                 all_probs.append(probs.cpu().numpy())
-                all_labels.append(labels.cpu().numpy())
+                all_labels.append(labels_cpu.numpy())           # Use CPU copy — no MPS sync issue
 
         all_probs = np.concatenate(all_probs, axis=0)
         all_labels = np.concatenate(all_labels, axis=0)
@@ -151,7 +152,7 @@ class Trainer:
         auc_scores = []
         for i in range(all_labels.shape[1]):
             if all_labels[:, i].sum() > 0:
-                auc_scores.append(roc_auc_score(all_labels[:, i], all_probs[:, i]))
+                auc_scores.append(roc_auc_score(all_labels[:, i].astype(int), all_probs[:, i]))
         mean_auc = np.mean(auc_scores)
 
         return total_loss / len(self.val_loader), mean_auc

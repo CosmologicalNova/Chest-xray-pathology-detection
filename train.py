@@ -48,6 +48,7 @@ def compute_pos_weights(train_loader, num_classes: int, device: str):
 
     # Avoid division by zero for classes with no samples
     pos_weights = np.where(pos_counts > 0, neg_counts / pos_counts, 1.0)
+    pos_weights = np.clip(pos_weights, a_min=1.0, a_max=50.0)  # Clamp: MPS overflows with weights > ~50
     print(f"Class weights range: {pos_weights.min():.1f} — {pos_weights.max():.1f}")
 
     return torch.tensor(pos_weights, dtype=torch.float32).to(device)

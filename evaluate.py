@@ -188,7 +188,7 @@ def main():
 
     ensemble_results = {}
     auc_scores, f1_scores, prec_scores, rec_scores = [], [], [], []
-    all_preds = (ensemble_probs >= 0.5).astype(int)
+    all_preds = (ensemble_probs >= 0.65).astype(int)
 
     for i, cls in enumerate(CLASSES):
         if all_labels[:, i].sum() == 0:

@@ -7,8 +7,8 @@ data:
   csv_path: "data/Data_Entry_2017.csv"
   images_dir: "data/images"
   image_size: 224                  # ViT and DenseNet both expect 224x224
-  batch_size: 16                   # Lower to 16 if you get CUDA out of memory
-  num_workers: 4                   # Parallel data loading workers (4 is good for M4)
+  batch_size: 32                   # M4 can handle 32 — halves the number of batches per epoch
+  num_workers: 0                   # Must be 0 on Mac — macOS + PyTorch multiprocessing causes crashes with MPS
   data_fraction: 1.0               # Using sample dataset (5,606 images) — use all of it
                                    # If using full dataset (112k images), start at 0.25
   train_split: 0.70
@@ -35,7 +35,7 @@ labels:
   num_classes: 14
 
 training:
-  epochs: 20                      # Start with 30, increase if val loss is still dropping
+  epochs: 10                      # 10 for a solid test run — increase to 20-30 for final results
   learning_rate: 0.0001            # 1e-4 is standard starting point for transfer learning
                                    # Lower to 1e-5 if val loss is unstable
   weight_decay: 0.0001             # L2 regularization — increase if overfitting
